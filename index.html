@@ -519,7 +519,7 @@ function pintarHoy(wx){
 
 /* ---------- vista ampliada: la figura en grande, no la miniatura ---------- */
 function figHD(x){
-  var ruta = String(x.i || '').replace('thumb/', 'fig/');
+  var ruta = String(x.i || x.img || '').replace('thumb/', 'fig/');
   return '<img src="'+ruta+'" alt="">';
 }
 function abrirLupa(x){
@@ -596,7 +596,7 @@ async function pedirIA(){
     const picks = ((r && r.picks) || []).filter(k => lista[k.i]).slice(0, 3);
     if (!picks.length) throw new Error('vacio');
     out.innerHTML = '<p class="seclabel">Lo que sugiere Claude</p><div class="sug">'
-      + picks.map(k => ficha(lista[k.i], k.por || lista[k.i].book)).join('') + '</div>';
+      + picks.map((k, n) => ficha(lista[k.i], k.por || lista[k.i].book, 'ia' + n)).join('') + '</div>';
   } catch(e){
     out.innerHTML = '<p class="iamsg">No pude traer la sugerencia. Vuelve a intentarlo.</p>';
   } finally {
