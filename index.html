@@ -252,7 +252,7 @@ main > section[hidden]{display:none}
   align-items:center; gap:3px; font-size:10px; transition:color .15s}
 .tabbar button svg{width:23px; height:23px; display:block; stroke:currentColor;
   stroke-width:1.6; fill:none; stroke-linecap:round; stroke-linejoin:round}
-.tabbar button[aria-selected=true]{color:var(--navy); font-weight:600}
+.tabbar button.on{color:var(--navy); font-weight:600}
 .tabbar button:active{opacity:.5}
 @media(min-width:760px){
   .tabbar{left:50%; right:auto; transform:translateX(-50%); width:620px;
@@ -282,6 +282,23 @@ main > section[hidden]{display:none}
 .lupacerrar:active{opacity:.5}
 body.lupaabierta{overflow:hidden}
 .hero{cursor:zoom-in}
+
+/* ---------- favoritos ---------- */
+.lupaacc{display:flex; gap:9px; justify-content:center; flex-wrap:wrap; margin-top:13px}
+.lupaacc button, .lupaacc a{font:inherit; font-size:12.5px; cursor:pointer;
+  border:1px solid var(--line); border-radius:999px; padding:9px 17px;
+  background:none; color:var(--navy); display:inline-flex; align-items:center; gap:6px}
+.lupaacc button:active, .lupaacc a:active{opacity:.55}
+.lupaacc button[aria-pressed=true]{background:var(--navy); border-color:var(--navy); color:#fff}
+.cora{width:14px; height:14px; stroke:currentColor; stroke-width:1.7; fill:none}
+.lupaacc button[aria-pressed=true] .cora{fill:currentColor}
+.favvacio{text-align:center; color:var(--muted); font-size:13.5px; line-height:1.6;
+  border:1px dashed var(--line); border-radius:12px; padding:38px 22px}
+.favvacio strong{display:block; color:var(--ink); font-size:15px; margin-bottom:6px}
+.quitar{display:block; width:100%; margin-top:5px; font:inherit; font-size:10px; cursor:pointer;
+  background:none; border:0; color:var(--muted); letter-spacing:.07em; text-transform:uppercase}
+.quitar:active{opacity:.5}
+.dy, .grid .cell{cursor:zoom-in}
 </style>
 </head>
 <body>
@@ -315,6 +332,10 @@ body.lupaabierta{overflow:hidden}
     <footer id="foot"></footer>
   </section>
 
+  <section id="tab-fav" hidden>
+    <div id="favlista"></div>
+  </section>
+
   <section id="tab-pre" hidden>
     <p class="tabnota">Fotograf&iacute;a tu ropa real, recorta el fondo y pru&eacute;batela sobre la
       figura de Ricky. Lo que guardes vive en la nube de tu cuenta, as&iacute; que lo capturas
@@ -339,6 +360,7 @@ body.lupaabierta{overflow:hidden}
   <button data-t="hoy" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M8.5 3.5 12 6l3.5-2.5L20 5.5l-1 4-2-.7V20H7V8.8l-2 .7-1-4z"/></svg><span>Hoy</span></button>
   <button data-t="cal" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><circle cx="12" cy="14.5" r="1.4" fill="currentColor" stroke="none"/></svg><span>Calendario</span></button>
   <button data-t="cat" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4.5 4.5h4v15h-4zM10.5 4.5h4v15h-4zM17 5l3.2.8-3 14.2-3.2-.9z"/></svg><span>Cat&aacute;logos</span></button>
+  <button data-t="fav" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9A4.6 4.6 0 0 1 19.4 13z"/></svg><span>Favoritos</span></button>
   <button data-t="pre" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M3.5 8.5h3l1.6-2.4h7.8L17.5 8.5h3v11h-17z"/><circle cx="12" cy="13.6" r="3.4"/></svg><span>Prendas</span></button>
 </nav>
 
@@ -459,7 +481,7 @@ function alternativas(fecha, wx, excluir){
 
 var VISTA = {};
 function ficha(x, nota, ver){
-  if (ver) VISTA[ver] = x;
+  if (ver) VISTA[ver] = norm(x);
   return '<a class="cell"'+(ver?' data-ver="'+ver+'"':'')+' href="'+x.file+'#w'+x.w+'d'+x.d+'">'
     + '<img src="'+x.img+'" alt="" loading="lazy">'
     + '<span class="ct">'+esc(x.title)+'</span>'
@@ -494,7 +516,7 @@ function pintarHoy(wx){
 
   const p = PLAN[HOYISO];
   if (p){
-    VISTA.hoy = {title:p.t, book:p.b, kind:p.k, tmin:p.a, tmax:p.z, i:p.i, file:p.f, w:p.w, d:p.d};
+    VISTA.hoy = norm(p);
     h += '<a class="hero" data-ver="hoy" href="'+p.f+'#w'+p.w+'d'+p.d+'">'
       + '<img src="'+p.i+'" alt="">'
       + '<div><div class="k">'+(ciudad === CASA ? 'Le toca hoy' : 'Del calendario')+'</div>'
@@ -518,18 +540,82 @@ function pintarHoy(wx){
 
 
 /* ---------- vista ampliada: la figura en grande, no la miniatura ---------- */
-function figHD(x){
-  var ruta = String(x.i || x.img || '').replace('thumb/', 'fig/');
-  return '<img src="'+ruta+'" alt="">';
+/* Un outfit llega con dos formas: el del calendario usa t/b/k/a/z/i/f y los
+   del catálogo title/book/kind/tmin/tmax/img/file. Se normaliza una sola vez
+   aquí para que nada más tenga que saberlo. */
+function norm(x){
+  if (!x) return null;
+  var file = x.file || x.f || '';
+  return {
+    k: file + '#w' + x.w + 'd' + x.d,
+    title: x.title || x.t || '',
+    book:  x.book  || x.b || '',
+    kind:  x.kind  || x.k || '',
+    tmin:  (x.tmin !== undefined ? x.tmin : x.a),
+    tmax:  (x.tmax !== undefined ? x.tmax : x.z),
+    img:   x.img || x.i || '',
+    file:  file, w: x.w, d: x.d
+  };
 }
+function figHD(x){
+  return '<img src="' + String(x.img || '').replace('thumb/', 'fig/') + '" alt="">';
+}
+
+var FAV = {}, FAVDB = null, ACTUAL = null;
+function idFav(k){ return k.replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 80); }
+function guardarLocal(){ try { localStorage.setItem('gfav', JSON.stringify(FAV)); } catch(e){} }
+
+async function cargarFav(){
+  try { FAVDB = await window.claude?.use?.('db'); } catch(e){ FAVDB = null; }
+  if (FAVDB){
+    try {
+      var r = await FAVDB.collection('favoritos').get();
+      var arr = Array.isArray(r) ? r : ((r && r.docs) || []);
+      arr.forEach(function(doc){
+        var o = doc && doc.data ? doc.data() : doc;
+        if (o && o.k) FAV[o.k] = o;
+      });
+    } catch(e){}
+  } else {
+    try { FAV = JSON.parse(localStorage.getItem('gfav') || '{}') || {}; } catch(e){ FAV = {}; }
+  }
+  pintarFav();
+}
+
+async function alternarFav(){
+  var o = ACTUAL; if (!o) return;
+  var quitar = !!FAV[o.k];
+  if (quitar) delete FAV[o.k]; else FAV[o.k] = o;
+  corazon(); pintarFav();
+  if (FAVDB){
+    try {
+      if (quitar) await FAVDB.collection('favoritos').doc(idFav(o.k)).delete();
+      else        await FAVDB.collection('favoritos').doc(idFav(o.k)).set(o);
+    } catch(e){ guardarLocal(); }
+  } else guardarLocal();
+}
+
+function corazon(){
+  var b = document.getElementById('favBtn'); if (!b || !ACTUAL) return;
+  var on = !!FAV[ACTUAL.k];
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.querySelector('span').textContent = on ? 'En favoritos' : 'Guardar';
+}
+
 function abrirLupa(x){
-  if (!x) return;
-  document.getElementById('lupaFig').innerHTML = figHD(x);
+  var o = norm(x); if (!o) return;
+  ACTUAL = o;
+  document.getElementById('lupaFig').innerHTML = figHD(o);
   document.getElementById('lupaPie').innerHTML =
-      '<h3>' + esc(x.title) + '</h3>'
-    + '<p class="meta">' + esc(x.book) + ' &middot; ' + esc(x.kind)
-    + ' &middot; ' + esc(x.tmin + '–' + x.tmax + '°') + '</p>'
-    + '<a class="ir" href="' + x.file + '#w' + x.w + 'd' + x.d + '">Ver en el cat&aacute;logo</a>';
+      '<h3>' + esc(o.title) + '</h3>'
+    + '<p class="meta">' + esc(o.book) + ' &middot; ' + esc(o.kind)
+    + ' &middot; ' + esc(o.tmin + '–' + o.tmax + '°') + '</p>'
+    + '<div class="lupaacc"><button id="favBtn" aria-pressed="false">'
+    + '<svg class="cora" viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9A4.6 4.6 0 0 1 19.4 13z"/></svg>'
+    + '<span>Guardar</span></button>'
+    + '<a href="' + o.file + '#w' + o.w + 'd' + o.d + '">Ver en el cat&aacute;logo</a></div>';
+  document.getElementById('favBtn').addEventListener('click', alternarFav);
+  corazon();
   document.getElementById('lupa').hidden = false;
   document.body.classList.add('lupaabierta');
 }
@@ -537,6 +623,7 @@ function cerrarLupa(){
   document.getElementById('lupa').hidden = true;
   document.body.classList.remove('lupaabierta');
   document.getElementById('lupaFig').innerHTML = '';
+  ACTUAL = null;
 }
 document.getElementById('lupaX').addEventListener('click', cerrarLupa);
 document.getElementById('lupa').addEventListener('click', function(e){
@@ -545,12 +632,42 @@ document.getElementById('lupa').addEventListener('click', function(e){
 document.addEventListener('keydown', function(e){
   if (e.key === 'Escape' && !document.getElementById('lupa').hidden) cerrarLupa();
 });
-document.getElementById('hoy').addEventListener('click', function(e){
-  var n = e.target.closest('[data-ver]');
-  if (!n) return;
+/* un solo gancho para todo: hoy, calendario, galería y favoritos */
+document.addEventListener('click', function(e){
+  var n = e.target.closest ? e.target.closest('[data-ver]') : null;
+  if (!n || !VISTA[n.dataset.ver]) return;
   e.preventDefault();
   abrirLupa(VISTA[n.dataset.ver]);
 });
+
+function pintarFav(){
+  var c = document.getElementById('favlista'); if (!c) return;
+  var ks = Object.keys(FAV);
+  if (!ks.length){
+    c.innerHTML = '<div class="favvacio"><strong>Todav&iacute;a no hay favoritos</strong>'
+      + 'Abre cualquier outfit en grande &mdash; desde Hoy, el calendario o la galer&iacute;a &mdash; '
+      + 'y toca <em>Guardar</em>. Aparecer&aacute;n aqu&iacute;.</div>';
+    return;
+  }
+  c.innerHTML = '<div class="galcount">' + ks.length + ' outfit' + (ks.length === 1 ? '' : 's') + '</div>'
+    + '<div class="grid">' + ks.map(function(k, i){
+        var o = FAV[k]; VISTA['f' + i] = o;
+        return '<div class="cell" data-ver="f' + i + '">'
+          + '<img src="' + o.img + '" alt="" loading="lazy">'
+          + '<span class="ct">' + esc(o.title) + '</span>'
+          + '<span class="cd">' + esc(o.book + ' · ' + o.tmin + '–' + o.tmax + '°') + '</span>'
+          + '<button class="quitar" data-quita="' + esc(k) + '">Quitar</button></div>';
+      }).join('') + '</div>';
+}
+document.getElementById('favlista').addEventListener('click', function(e){
+  var b = e.target.closest('[data-quita]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  var k = b.dataset.quita;
+  delete FAV[k]; pintarFav();
+  if (FAVDB) FAVDB.collection('favoritos').doc(idFav(k)).delete().catch(guardarLocal);
+  else guardarLocal();
+});
+cargarFav();
 
 /* ---------- sugerencias de Claude ----------
    Solo vive donde la pagina corre como artifact; en GitHub Pages no hay
@@ -621,8 +738,9 @@ function pintarMeses(){
     const p = PLAN[key];
     if (!p) continue;
     const wd = new Date(YEAR, mesVista-1, n).getDay();
+    VISTA['d'+key] = norm(p);
     h += '<a class="dy '+(wd===0||wd===6?'wknd':'')+' '+(key===HOYISO?'hoy':'')+'"'
-       + ' href="'+p.f+'#w'+p.w+'d'+p.d+'">'
+       + ' data-ver="d'+key+'" href="'+p.f+'#w'+p.w+'d'+p.d+'">'
        + '<span class="dw">'+DOW3[wd]+'</span><span class="num">'+n+'</span>'
        + '<img src="'+p.i+'" alt="" loading="lazy">'
        + '<span class="tt">'+esc(p.t)+'</span></a>';
@@ -658,12 +776,13 @@ function renderGal(){
     + facet(['Todos','Azul','Gris','Negro','Verde','Marrón','Neutro'], fColor, 'color')
     + '</div><div class="galcount">'+list.length+' outfit'+(list.length===1?'':'s')+'</div>'
     + (list.length
-        ? '<div class="grid">'+list.slice(0,shown).map(x =>
-            '<a class="cell" href="'+x.file+'#w'+x.w+'d'+x.d+'">'
+        ? '<div class="grid">'+list.slice(0,shown).map((x, gi) => {
+            VISTA['g'+gi] = norm(x);
+            return '<a class="cell" data-ver="g'+gi+'" href="'+x.file+'#w'+x.w+'d'+x.d+'">'
             + '<img src="'+x.img+'" alt="" loading="lazy">'
             + '<span class="ct">'+esc(x.title)+'</span>'
             + '<span class="cd">'+esc(x.date ? x.dow.slice(0,3)+' '+x.date+' '+x.mon.slice(0,3) : x.book+' · '+x.wl)+'</span>'
-            + '</a>').join('')+'</div>'
+            + '</a>'; }).join('')+'</div>'
           + (list.length>shown ? '<button class="more" id="moreBtn">Ver más ('+(list.length-shown)+')</button>' : '')
         : '<div class="empty">Ningún outfit con esa combinación de filtros.</div>');
 }
@@ -707,11 +826,18 @@ $('#foot').textContent = 'Los archivos HTML y las imágenes viven en la misma ca
 <script>
 (function(){
   var cab = document.getElementById('cab'), tit = document.getElementById('titulo');
-  var NOM = {hoy:'Hoy', cal:'Calendario', cat:'Cat\u00e1logos', pre:'Mis Prendas'};
+  var NOM = {hoy:'Hoy', cal:'Calendario', cat:'Cat\u00e1logos', fav:'Favoritos', pre:'Mis Prendas'};
   function ir(t){
     if (!NOM[t]) t = 'hoy';
     var bs = document.querySelectorAll('.tabbar button');
-    for (var i=0;i<bs.length;i++) bs[i].setAttribute('aria-selected', bs[i].dataset.t===t ? 'true':'false');
+    for (var i=0;i<bs.length;i++){
+      var sel = bs[i].dataset.t === t;
+      bs[i].setAttribute('aria-selected', sel ? 'true' : 'false');
+      bs[i].classList.toggle('on', sel);
+      // en línea: la hoja de estilo heredada tenía reglas que ganaban la cascada
+      bs[i].style.color = sel ? 'var(--navy)' : 'var(--muted)';
+      bs[i].style.fontWeight = sel ? '600' : '400';
+    }
     var ss = document.querySelectorAll('main > section');
     for (var j=0;j<ss.length;j++) ss[j].hidden = (ss[j].id !== 'tab-'+t);
     tit.textContent = NOM[t];
