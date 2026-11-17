@@ -130,10 +130,18 @@ main{flex:1; min-height:0; display:flex; justify-content:center; padding:14px 16
 @media(min-width:900px){ .arrow{display:flex} }
 .arrow.prev{left:18px} .arrow.next{right:18px}
 .arrow:hover{background:#fff}
+
+/* ---------- barra de navegación de detalle ---------- */
+.navbar{display:flex; align-items:center; min-height:30px; margin:0 0 2px}
+.atras{display:inline-flex; align-items:center; gap:3px; color:rgba(255,255,255,.82);
+  font-size:14px; letter-spacing:.01em; padding:3px 10px 3px 0; margin-left:-2px}
+.atras .chev{font-size:22px; line-height:1; margin-top:-2px}
+.atras:active{opacity:.55}
 </style>
 </head><body>
 
 <header id="hdr">
+  <div class="navbar"><a class="atras" href="index.html#cat"><span class="chev">&#8249;</span>Cat&aacute;logos</a></div>
   <div class="masthead">
     <button class="bookbtn" id="bookBtn">
       <span class="sub">Guardarropa</span>
@@ -141,7 +149,7 @@ main{flex:1; min-height:0; display:flex; justify-content:center; padding:14px 16
       <span class="sub2">Purple Label · pasarela</span>
     </button>
     <div class="hbtns">
-      <a class="hbtn" href="index.html">Galería</a>
+      <a class="hbtn" href="index.html#cat">Galer&iacute;a</a>
       <button class="hbtn" id="todayBtn" hidden>Hoy</button>
     </div>
   </div>
