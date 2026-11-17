@@ -558,7 +558,10 @@ function norm(x){
   };
 }
 function figHD(x){
-  return '<img src="' + String(x.img || '').replace('thumb/', 'fig/') + '" alt="">';
+  // la ruta va en una variable suelta a propósito: la versión en láminas
+  // reescribe este <img> buscando exactamente esa forma
+  var ruta = String(x.img || '').replace('thumb/', 'fig/');
+  return '<img src="'+ruta+'" alt="">';
 }
 
 var FAV = {}, FAVDB = null, ACTUAL = null;
@@ -653,7 +656,7 @@ function pintarFav(){
     + '<div class="grid">' + ks.map(function(k, i){
         var o = FAV[k]; VISTA['f' + i] = o;
         return '<div class="cell" data-ver="f' + i + '">'
-          + '<img src="' + o.img + '" alt="" loading="lazy">'
+          + '<img src="'+o.img+'" alt="" loading="lazy">'
           + '<span class="ct">' + esc(o.title) + '</span>'
           + '<span class="cd">' + esc(o.book + ' · ' + o.tmin + '–' + o.tmax + '°') + '</span>'
           + '<button class="quitar" data-quita="' + esc(k) + '">Quitar</button></div>';
