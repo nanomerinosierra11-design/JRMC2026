@@ -299,6 +299,23 @@ body.lupaabierta{overflow:hidden}
   background:none; border:0; color:var(--muted); letter-spacing:.07em; text-transform:uppercase}
 .quitar:active{opacity:.5}
 .dy, .grid .cell{cursor:zoom-in}
+.sync{margin-top:26px; border-top:1px solid var(--line); padding-top:16px}
+.sync h4{margin:0 0 4px; font-size:13px; letter-spacing:.02em}
+.sync p{margin:0 0 10px; font-size:12.5px; line-height:1.55; color:var(--muted)}
+.sync .est{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted)}
+.sync .pt{width:7px; height:7px; border-radius:50%; background:var(--muted); flex:none}
+.sync .pt.ok{background:#2f8f4e} .sync .pt.mal{background:#b4453a}
+.sync .fila{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.sync button{font:inherit; font-size:12px; padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--line); background:none; color:var(--ink)}
+.sync button.pri{background:var(--navy); border-color:var(--navy); color:#fff}
+.sync button:active{opacity:.6}
+.sync input{font:inherit; font-size:12.5px; padding:8px 11px; border-radius:9px; width:100%;
+  border:1px solid var(--line); background:var(--bg); color:var(--ink); margin-top:8px}
+.sync a{color:var(--navy)}
+.sync .caja{display:none; margin-top:12px; border:1px solid var(--line); border-radius:11px; padding:13px}
+.sync .caja.on{display:block}
+.sync ol{margin:6px 0 0 16px; padding:0; font-size:12.5px; line-height:1.6; color:var(--muted)}
 </style>
 </head>
 <body>
@@ -334,6 +351,27 @@ body.lupaabierta{overflow:hidden}
 
   <section id="tab-fav" hidden>
     <div id="favlista"></div>
+    <div class="sync" id="sync">
+      <h4>Sincron&iacute;a entre dispositivos</h4>
+      <p id="syncTxt">Comprobando&hellip;</p>
+      <span class="est"><span class="pt" id="syncPt"></span><span id="syncEst">&mdash;</span></span>
+      <div class="fila">
+        <button id="syncYa" class="pri">Sincronizar ahora</button>
+        <button id="syncCon">Conectar este dispositivo</button>
+        <button id="syncOff" hidden>Desconectar</button>
+      </div>
+      <div class="caja" id="syncCaja">
+        <ol>
+          <li>Abre <a id="syncLink" target="_blank" rel="noopener">esta p&aacute;gina de GitHub</a>,
+              que ya viene con los permisos puestos.</li>
+          <li>Comprueba que diga <em>Contents: Read and write</em> y genera el token.</li>
+          <li>C&oacute;pialo y p&eacute;galo aqu&iacute;. Se queda en este navegador; no sale de aqu&iacute;.</li>
+        </ol>
+        <input id="syncTok" type="password" autocomplete="off" spellcheck="false"
+               placeholder="github_pat_&hellip;">
+        <div class="fila"><button id="syncGuardar" class="pri">Guardar token</button></div>
+      </div>
+    </div>
   </section>
 
   <section id="tab-pre" hidden>
@@ -567,9 +605,12 @@ function figHD(x){
   return '<img src="'+ruta+'" alt="">';
 }
 
-var FAV = {}, FAVDB = null, ACTUAL = null;
+var FAV = {}, TOMB = {}, FAVDB = null, ACTUAL = null;
 function idFav(k){ return k.replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 80); }
-function guardarLocal(){ try { localStorage.setItem('gfav', JSON.stringify(FAV)); } catch(e){} }
+function guardarLocal(){ try {
+  localStorage.setItem('gfav', JSON.stringify(FAV));
+  localStorage.setItem('gtomb', JSON.stringify(TOMB));
+} catch(e){} }
 
 async function cargarFav(){
   try { FAVDB = await window.claude?.use?.('db'); } catch(e){ FAVDB = null; }
@@ -585,6 +626,7 @@ async function cargarFav(){
   } else {
     try { FAV = JSON.parse(localStorage.getItem('gfav') || '{}') || {}; } catch(e){ FAV = {}; }
   }
+  try { TOMB = JSON.parse(localStorage.getItem('gtomb') || '{}') || {}; } catch(e){ TOMB = {}; }
   pintarFav();
   cargarPropuesta();
 }
@@ -592,7 +634,8 @@ async function cargarFav(){
 async function alternarFav(){
   var o = ACTUAL; if (!o) return;
   var quitar = !!FAV[o.k];
-  if (quitar) delete FAV[o.k]; else FAV[o.k] = o;
+  if (quitar){ delete FAV[o.k]; TOMB[o.k] = Date.now(); }
+  else { o.ts = Date.now(); delete TOMB[o.k]; FAV[o.k] = o; }
   corazon(); pintarFav();
   if (FAVDB){
     try {
@@ -600,6 +643,7 @@ async function alternarFav(){
       else        await FAVDB.collection('favoritos').doc(idFav(o.k)).set(o);
     } catch(e){ guardarLocal(); }
   } else guardarLocal();
+  marcar();
 }
 
 function corazon(){
@@ -670,11 +714,196 @@ document.getElementById('favlista').addEventListener('click', function(e){
   var b = e.target.closest('[data-quita]'); if (!b) return;
   e.preventDefault(); e.stopPropagation();
   var k = b.dataset.quita;
-  delete FAV[k]; pintarFav();
+  delete FAV[k]; TOMB[k] = Date.now(); pintarFav(); marcar();
   if (FAVDB) FAVDB.collection('favoritos').doc(idFav(k)).delete().catch(guardarLocal);
   else guardarLocal();
 });
 cargarFav();
+
+/* ---------- GH_SYNC: favoritos compartidos entre dispositivos ----------
+   Un solo archivo en el repo manda. Se lee sin credenciales —el repo es
+   público— y se escribe con un token personal que cada dispositivo guarda en
+   su propio navegador. Vive en la rama `datos` para que guardar un favorito no
+   reconstruya el sitio. Funciona igual en GitHub Pages y dentro del artifact;
+   si el entorno no deja salir a GitHub, el panel lo dice y todo sigue local. */
+var GH = {usr:'nanomerinosierra11-design', repo:'JRMC2026', rama:'datos', ruta:'favoritos.json'};
+GH.nuevo = 'https://github.com/settings/personal-access-tokens/new'
+  + '?name=Guardarropa&description=Sincroniza+los+favoritos+del+guardarropa'
+  + '&target_name=' + GH.usr + '&contents=write';
+var SHA = null, SYNCOK = null, SYNCMSG = '', TMR = null;
+
+function ghTok(){ try { return localStorage.getItem('gh-token') || ''; } catch(e){ return ''; } }
+function b64txt(b){ var s = atob(String(b).replace(/\s/g, '')), u = new Uint8Array(s.length);
+  for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return new TextDecoder().decode(u); }
+function txtb64(t){ var u = new TextEncoder().encode(t), s = '';
+  for (var i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+  return btoa(s); }
+function vacio(){ return {v:1, items:{}, tomb:{}, pref:{}}; }
+
+/* El merge no pregunta quién ganó: manda la marca de tiempo. Un borrado deja
+   lápida para que no resucite desde el dispositivo que aún no se enteró. */
+function fundir(a, b){
+  var r = vacio();
+  [a, b].forEach(function(s){
+    var t = (s && s.tomb) || {};
+    Object.keys(t).forEach(function(k){ r.tomb[k] = Math.max(r.tomb[k] || 0, t[k] || 0); });
+  });
+  [a, b].forEach(function(s){
+    var it = (s && s.items) || {};
+    Object.keys(it).forEach(function(k){
+      var o = it[k], t = o && o.ts || 0;
+      if ((r.tomb[k] || 0) > t) return;
+      if (!r.items[k] || (r.items[k].ts || 0) < t) r.items[k] = o;
+    });
+  });
+  var pa = (a && a.pref) || {}, pb = (b && b.pref) || {};
+  r.pref = (pa.ts || 0) >= (pb.ts || 0) ? pa : pb;
+  var corte = Date.now() - 180 * 864e5;
+  Object.keys(r.tomb).forEach(function(k){ if (r.tomb[k] < corte && !r.items[k]) delete r.tomb[k]; });
+  return r;
+}
+function local(){
+  var p = {};
+  try { var c = localStorage.getItem('gw-ciudad'), t = +(localStorage.getItem('gw-ciudad-ts') || 0);
+        if (c !== null) p = {ciudad:+c, ts:t}; } catch(e){}
+  return {v:1, items:FAV, tomb:TOMB, pref:p};
+}
+function aplicar(d){
+  FAV = d.items || {}; TOMB = d.tomb || {};
+  if (d.pref && typeof d.pref.ciudad === 'number' && CIUDADES[d.pref.ciudad]){
+    var mio = 0; try { mio = +(localStorage.getItem('gw-ciudad-ts') || 0); } catch(e){}
+    if ((d.pref.ts || 0) > mio && d.pref.ciudad !== ciudad){
+      ciudad = d.pref.ciudad;
+      try { localStorage.setItem('gw-ciudad', ciudad);
+            localStorage.setItem('gw-ciudad-ts', d.pref.ts); } catch(e){}
+      pintarHoy(null); traerClima();
+    }
+  }
+  guardarLocal();
+  volcarDb();
+}
+
+/* Dentro del artifact la base de Claude sigue siendo la copia local. Se deja
+   igual a lo acordado con GitHub para que un favorito borrado en el teléfono
+   no reaparezca aquí en la siguiente carga. */
+async function volcarDb(){
+  if (!FAVDB) return;
+  try {
+    var r = await FAVDB.collection('favoritos').get();
+    var arr = Array.isArray(r) ? r : ((r && r.docs) || []);
+    for (var i = 0; i < arr.length; i++){
+      var o = arr[i] && arr[i].data ? arr[i].data() : arr[i];
+      if (o && o.k && !FAV[o.k]) await FAVDB.collection('favoritos').doc(idFav(o.k)).delete();
+    }
+    var ks = Object.keys(FAV);
+    for (var j = 0; j < ks.length; j++)
+      await FAVDB.collection('favoritos').doc(idFav(ks[j])).set(FAV[ks[j]]);
+  } catch(e){}
+}
+
+async function ghLeer(){
+  var u = 'https://api.github.com/repos/' + GH.usr + '/' + GH.repo + '/contents/'
+        + GH.ruta + '?ref=' + GH.rama + '&t=' + Date.now();
+  var hd = {Accept:'application/vnd.github+json'}, t = ghTok();
+  if (t) hd.Authorization = 'Bearer ' + t;
+  var r = await fetch(u, {headers:hd, cache:'no-store'});
+  if (r.status === 404){ SHA = null; return vacio(); }
+  if (!r.ok) throw new Error('lectura ' + r.status);
+  var j = await r.json(); SHA = j.sha;
+  try { return JSON.parse(b64txt(j.content)); } catch(e){ return vacio(); }
+}
+async function ghRama(){
+  /* La primera vez la rama de datos no existe: se crea desde la del sitio.
+     Así no hay que preparar nada a mano en GitHub. */
+  var t = ghTok(); if (!t) return false;
+  var hd = {Accept:'application/vnd.github+json', Authorization:'Bearer ' + t,
+            'Content-Type':'application/json'};
+  var b = 'https://api.github.com/repos/' + GH.usr + '/' + GH.repo;
+  var r = await fetch(b + '/git/ref/heads/' + GH.rama, {headers:hd});
+  if (r.ok) return true;
+  var o = await fetch(b, {headers:hd}); if (!o.ok) return false;
+  var def = (await o.json()).default_branch || 'main';
+  var s = await fetch(b + '/git/ref/heads/' + def, {headers:hd}); if (!s.ok) return false;
+  var sha = (await s.json()).object.sha;
+  var c = await fetch(b + '/git/refs', {method:'POST', headers:hd,
+    body:JSON.stringify({ref:'refs/heads/' + GH.rama, sha:sha})});
+  return c.ok || c.status === 422;
+}
+
+async function ghEscribir(d){
+  var t = ghTok(); if (!t) return false;
+  await ghRama();
+  var cuerpo = {message:'favoritos ' + new Date().toISOString().slice(0, 16),
+                content:txtb64(JSON.stringify(d)), branch:GH.rama};
+  if (SHA) cuerpo.sha = SHA;
+  var r = await fetch('https://api.github.com/repos/' + GH.usr + '/' + GH.repo + '/contents/' + GH.ruta, {
+    method:'PUT', headers:{Accept:'application/vnd.github+json', Authorization:'Bearer ' + t,
+    'Content-Type':'application/json'}, body:JSON.stringify(cuerpo)});
+  if (r.status === 409 || r.status === 422) return 'choque';
+  if (!r.ok){ var e = new Error('escritura ' + r.status); e.code = r.status; throw e; }
+  var j = await r.json(); SHA = j && j.content && j.content.sha || null;
+  return true;
+}
+
+var SYNCANDO = false;
+async function sincronizar(escribe){
+  if (SYNCANDO) return; SYNCANDO = true;
+  try {
+    var rem = await ghLeer();
+    var uni = fundir(local(), rem);
+    aplicar(uni); pintarFav(); corazon();
+    if (escribe && ghTok() && JSON.stringify(uni) !== JSON.stringify(rem)){
+      var ok = await ghEscribir(uni);
+      if (ok === 'choque'){ await ghLeer(); await ghEscribir(fundir(local(), await ghLeer())); }
+    }
+    SYNCOK = true; SYNCMSG = 'al día ' + new Date().toLocaleTimeString('es-MX',
+      {hour:'2-digit', minute:'2-digit'});
+  } catch(e){
+    SYNCOK = false;
+    SYNCMSG = /401|403/.test(String(e && e.message)) ? 'el token no sirve o caducó'
+            : (ghTok() ? 'no se pudo conectar' : 'solo en este dispositivo');
+  } finally { SYNCANDO = false; pintaSync(); }
+}
+function marcar(){ clearTimeout(TMR); TMR = setTimeout(function(){ sincronizar(true); }, 2500); }
+
+function pintaSync(){
+  var p = document.getElementById('syncPt'), e = document.getElementById('syncEst'),
+      t = document.getElementById('syncTxt'), c = document.getElementById('syncCon'),
+      o = document.getElementById('syncOff');
+  if (!p) return;
+  var hay = !!ghTok();
+  p.className = 'pt' + (SYNCOK === true ? ' ok' : SYNCOK === false && hay ? ' mal' : '');
+  e.textContent = SYNCMSG || (hay ? 'conectado' : 'solo en este dispositivo');
+  t.innerHTML = hay
+    ? 'Los favoritos de este dispositivo y los del teléfono son los mismos: '
+      + 'se guardan en tu repositorio de GitHub.'
+    : 'Ahora mismo los favoritos solo viven en este navegador. Conecta el '
+      + 'dispositivo y se compartirán con los demás.';
+  c.textContent = hay ? 'Cambiar token' : 'Conectar este dispositivo';
+  o.hidden = !hay;
+}
+(function(){
+  var L = document.getElementById('syncLink'); if (L) L.href = GH.nuevo;
+  var caja = document.getElementById('syncCaja');
+  document.getElementById('syncCon').onclick = function(){ caja.classList.toggle('on'); };
+  document.getElementById('syncOff').onclick = function(){
+    try { localStorage.removeItem('gh-token'); } catch(e){}
+    SYNCOK = null; SYNCMSG = ''; pintaSync();
+  };
+  document.getElementById('syncYa').onclick = function(){ sincronizar(true); };
+  document.getElementById('syncGuardar').onclick = function(){
+    var i = document.getElementById('syncTok'), v = (i.value || '').trim();
+    if (!v) return;
+    try { localStorage.setItem('gh-token', v); } catch(e){}
+    i.value = ''; caja.classList.remove('on'); sincronizar(true);
+  };
+  pintaSync();
+  sincronizar(false);
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) sincronizar(false);
+  });
+})();
 
 /* ---------- sugerencias de Claude ----------
    Solo vive donde la pagina corre como artifact; en GitHub Pages no hay
@@ -882,7 +1111,9 @@ function traerClima(){
 $('#hoy').addEventListener('click', e => {
   const b = e.target.closest('[data-ciudad]'); if(!b) return;
   ciudad = +b.dataset.ciudad;
-  try { localStorage.setItem('gw-ciudad', ciudad); } catch(err){}
+  try { localStorage.setItem('gw-ciudad', ciudad);
+        localStorage.setItem('gw-ciudad-ts', Date.now()); } catch(err){}
+  if (typeof marcar === 'function') marcar();
   pintarHoy(null); traerClima();
 });
 
