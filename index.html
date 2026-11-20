@@ -857,8 +857,9 @@ async function sincronizar(escribe){
       var ok = await ghEscribir(uni);
       if (ok === 'choque'){ await ghLeer(); await ghEscribir(fundir(local(), await ghLeer())); }
     }
-    SYNCOK = true; SYNCMSG = 'al día ' + new Date().toLocaleTimeString('es-MX',
-      {hour:'2-digit', minute:'2-digit'});
+    SYNCOK = ghTok() ? true : null;
+    SYNCMSG = ghTok() ? 'al día ' + new Date().toLocaleTimeString('es-MX',
+      {hour:'2-digit', minute:'2-digit'}) : 'solo en este dispositivo';
   } catch(e){
     SYNCOK = false;
     SYNCMSG = /401|403/.test(String(e && e.message)) ? 'el token no sirve o caducó'
